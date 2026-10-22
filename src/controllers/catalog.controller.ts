@@ -7,7 +7,26 @@ import {
   slugParamSchema,
 } from "../validators/catalog.validators.js";
 
-function serializeProduct(product: Product) {
+export interface SerializedProduct {
+  id: string;
+  slug: string;
+  title: string;
+  artist: {
+    slug: string;
+    name: string;
+    location: string;
+    medium: string;
+    imageUrl: string;
+  } | null;
+  type: string;
+  category: string;
+  price: number;
+  currency: string;
+  imageUrl: string;
+  description: string;
+}
+
+export function serializeProduct(product: Product): SerializedProduct {
   return {
     id: product.id,
     slug: product.slug,

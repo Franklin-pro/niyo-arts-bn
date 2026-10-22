@@ -2,6 +2,8 @@ import app from "./app.js";
 import { sequelize } from "./config/database.js";
 import { seedCatalog } from "./seeders/catalog.seeder.js";
 import "./models/index.js";
+import { createBootstrapAdmin } from "./controllers/auth.controller.js";
+import { applySchemaUpdates } from "./config/schema-updates.js";
 
 const port = Number(process.env.PORT || 4000);
 
@@ -10,6 +12,8 @@ async function startServer(): Promise<void> {
     await sequelize.authenticate();
     console.log("Connected to Database successfully.");
     await sequelize.sync();
+    await applySchemaUpdates();
+    await createBootstrapAdmin();
     await seedCatalog();
 
     const server = app.listen(port, () => {

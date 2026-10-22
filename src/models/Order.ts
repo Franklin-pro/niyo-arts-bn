@@ -19,6 +19,7 @@ export class Order extends Model<
   InferCreationAttributes<Order>
 > {
   declare id: CreationOptional<string>;
+  declare userId: string | null;
   declare reference: string;
   declare customerName: string;
   declare customerEmail: string;
@@ -27,6 +28,8 @@ export class Order extends Model<
   declare paymentMethod: "mobile_money" | "card";
   declare paymentProvider: string | null;
   declare paymentPhone: string | null;
+  declare paymentReference: string | null;
+  declare paymentUrl: string | null;
   declare total: string;
   declare currency: CreationOptional<string>;
   declare status: CreationOptional<string>;
@@ -42,6 +45,12 @@ Order.init(
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: { model: "users", key: "id" },
+      onDelete: "SET NULL",
+    },
     reference: { type: DataTypes.STRING(40), allowNull: false, unique: true },
     customerName: { type: DataTypes.STRING(160), allowNull: false },
     customerEmail: { type: DataTypes.STRING(254), allowNull: false },
@@ -53,6 +62,8 @@ Order.init(
     },
     paymentProvider: { type: DataTypes.STRING(120), allowNull: true },
     paymentPhone: { type: DataTypes.STRING(40), allowNull: true },
+    paymentReference: { type: DataTypes.STRING(80), allowNull: true },
+    paymentUrl: { type: DataTypes.TEXT, allowNull: true },
     total: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
     currency: {
       type: DataTypes.STRING(3),
