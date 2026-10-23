@@ -16,7 +16,16 @@ Express + TypeScript + PostgreSQL + Sequelize API for the Niyo Arts storefront.
 5. Configure the admin, SMTP, and Flutterwave values in `.env`. Use real
    provider settings and test credentials; never use example values in
    production.
-6. Start the API (it creates missing tables and seeds the initial catalog):
+6. Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and
+   `CLOUDINARY_API_SECRET` (required for production). Optionally set
+   `CLOUDINARY_FOLDER` (defaults to `niyo-arts`).
+7. For production, set `NODE_ENV=production`, `DATABASE_URL` (or all of
+   `DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`), `CORS_ORIGIN` to the
+   exact frontend origin(s), and a valid `PORT`. Production database TLS
+   validates server certificates; use a trusted CA. If deployed behind a
+   reverse proxy, set `TRUST_PROXY_HOPS` to the number of trusted proxy hops
+   so client IPs and rate limits work as intended.
+8. Start the API (it creates missing tables and seeds the initial catalog):
 
    ```bash
    npm run dev
@@ -44,6 +53,7 @@ JSON. Send `Content-Type: application/json` with JSON request bodies.
 | GET | `/api/auth/me` | Get the current account | `200` |
 | POST | `/api/auth/forgot-password` | Email a password reset link | `200` |
 | POST | `/api/auth/reset-password` | Set a new password | `200` |
+| POST | `/api/admin/images` | Upload a catalog image to Cloudinary (admin only) | `201` |
 | POST | `/api/carts` | Create a cart for the logged-in user | `201` |
 | GET | `/api/carts/:cartId` | Get a cart | `200` |
 | POST | `/api/carts/:cartId/items` | Add artwork quantities to a cart | `200` |
@@ -58,6 +68,23 @@ JSON. Send `Content-Type: application/json` with JSON request bodies.
 | GET | `/api/payments/flutterwave/callback` | Verify checkout return and redirect | `303` |
 | POST | `/api/payments/flutterwave/webhook` | Verify a Flutterwave payment webhook | `200` |
 | POST | `/api/contact` | Submit a contact message | `201` |
+
+### Admin image uploads
+
+Send a `multipart/form-data` request to `POST /api/admin/images` with the
+administrator's access token and a file field named `image`. JPEG, PNG, WebP,
+and GIF files up to 10 MB are accepted. The response includes the Cloudinary
+URL to pass as `imageUrl` when creating or updating a product, artist, or
+collection:
+
+```json
+{
+  "data": {
+    "imageUrl": "https://res.cloudinary.com/your-cloud/image/upload/...",
+    "publicId": "niyo-arts/example"
+  }
+}
+```
 
 `GET /api/health` returns `{ "status": "ok", "service": "niyo-arts-backend",
 "timestamp": "<ISO timestamp>" }`.
@@ -167,8 +194,13 @@ account.
 - `.env` is ignored by Git. Never commit real secrets.
 - Startup uses `sequelize.sync()` to create missing tables and applies
   idempotent additive schema updates for account ownership and payment columns.
-  Use versioned migrations for future production schema changes; do not use
-  destructive sync options in production.
+  It does not alter existing columns here. This repository does not yet have a
+  configured versioned migration workflow; establish and test one before
+  making production schema changes. Do not use destructive sync options in
+  production.
+- The built-in rate limiter uses in-memory state. It is suitable for a
+  single API instance; use a shared rate-limit store before running multiple
+  instances so limits are consistent across them.
 - Admin bootstrap credentials, JWT secrets, SMTP credentials, and Flutterwave
   secrets must be private, unique, and configured in the deployment
   environment, never committed to source control.

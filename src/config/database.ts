@@ -8,7 +8,7 @@ export const sequelize = databaseUrl
       logging: process.env.NODE_ENV === "development" ? console.log : false,
       dialectOptions:
         process.env.NODE_ENV === "production"
-          ? { ssl: { require: true, rejectUnauthorized: false } }
+          ? { ssl: { require: true } }
           : {},
     })
   : new Sequelize(

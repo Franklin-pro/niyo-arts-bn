@@ -18,6 +18,17 @@ import {
   productAdminSchema,
 } from "../validators/admin.validators.js";
 import { slugParamSchema } from "../validators/catalog.validators.js";
+import { uploadImage } from "../services/cloudinary.service.js";
+
+export async function uploadAdminImage(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  if (!req.file) {
+    throw new HttpError(400, "An image file is required in the 'image' field.");
+  }
+  res.status(201).json({ data: await uploadImage(req.file) });
+}
 
 export async function listAdminProducts(_req: Request, res: Response): Promise<void> {
   const products = await Product.findAll({

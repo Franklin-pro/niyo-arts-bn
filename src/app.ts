@@ -17,6 +17,9 @@ import { errorHandler, notFoundHandler } from "./middleware/error.middleware.js"
 const app = express();
 
 app.disable("x-powered-by");
+if (process.env.TRUST_PROXY_HOPS !== undefined) {
+  app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS));
+}
 app.use(helmet());
 app.use(
   cors({

@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import multer from "multer";
 import { UniqueConstraintError, ValidationError } from "sequelize";
 import { ZodError } from "zod";
 import { HttpError } from "../utils/http-error.js";
@@ -27,6 +28,11 @@ export function errorHandler(
   }
   if (error instanceof HttpError) {
     res.status(error.statusCode).json({ message: error.message });
+    return;
+  }
+  if (error instanceof multer.MulterError) {
+    const statusCode = error.code === "LIMIT_FILE_SIZE" ? 413 : 400;
+    res.status(statusCode).json({ message: error.message });
     return;
   }
   if (error instanceof UniqueConstraintError) {

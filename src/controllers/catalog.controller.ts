@@ -107,6 +107,7 @@ export async function listArtists(_req: Request, res: Response): Promise<void> {
   const artists = await Artist.findAll({ order: [["name", "ASC"]] });
   const products = await Product.findAll({
     where: { isActive: true },
+    include: [{ model: Artist, as: "artist", required: true }],
     order: [["createdAt", "ASC"]],
   });
   const worksByArtist = new Map<string, Product[]>();
@@ -127,9 +128,13 @@ export async function listArtists(_req: Request, res: Response): Promise<void> {
         bio: artist.bio,
         imageUrl: artist.imageUrl,
         workCount: works.length,
-        startingPrice: works.length
-          ? Math.min(...works.map((work) => Number(work.price)))
-          : null,
+        startingPrice: works.reduce<number | null>(
+          (minimum, work) =>
+            minimum === null
+              ? Number(work.price)
+              : Math.min(minimum, Number(work.price)),
+          null,
+        ),
         products: works.map(serializeProduct),
       };
     }),

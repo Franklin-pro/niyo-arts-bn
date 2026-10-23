@@ -17,13 +17,16 @@ import {
   updateAdminContact,
   updateAdminOrder,
   updateAdminProduct,
+  uploadAdminImage,
 } from "../controllers/admin.controller.js";
 import { requireAdmin, requireAuth } from "../middleware/auth.middleware.js";
+import { uploadSingleImage } from "../middleware/image-upload.middleware.js";
 import { asyncHandler } from "../utils/async-handler.js";
 
 const router = Router();
 router.use(asyncHandler(requireAuth), requireAdmin);
 
+router.post("/images", uploadSingleImage, asyncHandler(uploadAdminImage));
 router.get("/products", asyncHandler(listAdminProducts));
 router.post("/products", asyncHandler(createAdminProduct));
 router.put("/products/:slug", asyncHandler(updateAdminProduct));
