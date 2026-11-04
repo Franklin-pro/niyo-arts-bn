@@ -59,6 +59,18 @@ export async function requireAuth(
   next();
 }
 
+export async function optionalAuth(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  if (!req.header("authorization")) {
+    next();
+    return;
+  }
+  await requireAuth(req, res, next);
+}
+
 export function requireAdmin(
   req: AuthenticatedRequest,
   _res: Response,

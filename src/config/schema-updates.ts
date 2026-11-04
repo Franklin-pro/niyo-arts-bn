@@ -51,4 +51,74 @@ export async function applySchemaUpdates(): Promise<void> {
       allowNull: true,
     });
   }
+
+  const productColumns = await queryInterface.describeTable("products");
+  if (!productColumns.kind) {
+    await queryInterface.addColumn("products", "kind", {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "physical",
+    });
+  }
+
+  const extendedOrderColumns = await queryInterface.describeTable("orders");
+  if (!extendedOrderColumns.subtotal) {
+    await queryInterface.addColumn("orders", "subtotal", {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0,
+    });
+  }
+  if (!extendedOrderColumns.shippingCost) {
+    await queryInterface.addColumn("orders", "shippingCost", {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0,
+    });
+  }
+  if (!extendedOrderColumns.checkoutKey) {
+    await queryInterface.addColumn("orders", "checkoutKey", {
+      type: DataTypes.STRING(160),
+      allowNull: true,
+      unique: true,
+    });
+  }
+  if (extendedOrderColumns.shippingAddress?.allowNull === false) {
+    await queryInterface.changeColumn("orders", "shippingAddress", {
+      type: DataTypes.JSONB,
+      allowNull: true,
+    });
+  }
+  for (const [column, definition] of [
+    ["trackingNumber", { type: DataTypes.STRING(120), allowNull: true }],
+    ["trackingUrl", { type: DataTypes.TEXT, allowNull: true }],
+    ["shippedAt", { type: DataTypes.DATE, allowNull: true }],
+    ["shippingNotes", { type: DataTypes.TEXT, allowNull: true }],
+  ] as const) {
+    if (!extendedOrderColumns[column]) {
+      await queryInterface.addColumn("orders", column, definition);
+    }
+  }
+
+  const orderItemColumns = await queryInterface.describeTable("order_items");
+  if (!orderItemColumns.productKind) {
+    await queryInterface.addColumn("order_items", "productKind", {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "physical",
+    });
+  }
+  if (!orderItemColumns.digitalDeliveryStatus) {
+    await queryInterface.addColumn("order_items", "digitalDeliveryStatus", {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "pending",
+    });
+  }
+  if (!orderItemColumns.digitalDeliveryUrl) {
+    await queryInterface.addColumn("order_items", "digitalDeliveryUrl", {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    });
+  }
 }

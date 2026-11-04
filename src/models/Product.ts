@@ -17,6 +17,7 @@ export class Product extends Model<
   declare slug: string;
   declare title: string;
   declare artistId: string;
+  declare kind: CreationOptional<"physical" | "digital">;
   declare type: string;
   declare category: string;
   declare price: string;
@@ -44,6 +45,11 @@ Product.init(
       references: { model: "artists", key: "id" },
     },
     type: { type: DataTypes.STRING(120), allowNull: false },
+    kind: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "physical",
+    },
     category: { type: DataTypes.STRING(80), allowNull: false },
     price: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
     currency: {

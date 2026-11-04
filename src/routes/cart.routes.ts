@@ -9,10 +9,10 @@ import {
   updateCartItem,
 } from "../controllers/cart.controller.js";
 import { asyncHandler } from "../utils/async-handler.js";
-import { requireAuth, requireUser } from "../middleware/auth.middleware.js";
+import { optionalAuth } from "../middleware/auth.middleware.js";
 
 const router = Router();
-router.use(asyncHandler(requireAuth), requireUser);
+router.use(asyncHandler(optionalAuth));
 
 router.post("/", asyncHandler(createCart));
 router.get("/:cartId", asyncHandler(getCart));

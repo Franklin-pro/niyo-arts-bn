@@ -25,7 +25,7 @@ Express + TypeScript + PostgreSQL + Sequelize API for the Niyo Arts storefront.
    validates server certificates; use a trusted CA. If deployed behind a
    reverse proxy, set `TRUST_PROXY_HOPS` to the number of trusted proxy hops
    so client IPs and rate limits work as intended.
-8. Start the API (it creates missing tables and seeds the initial catalog):
+8. Start the API (it creates missing tables and applies schema updates):
 
    ```bash
    npm run dev
@@ -54,7 +54,7 @@ JSON. Send `Content-Type: application/json` with JSON request bodies.
 | POST | `/api/auth/forgot-password` | Email a password reset link | `200` |
 | POST | `/api/auth/reset-password` | Set a new password | `200` |
 | POST | `/api/admin/images` | Upload a catalog image to Cloudinary (admin only) | `201` |
-| POST | `/api/carts` | Create a cart for the logged-in user | `201` |
+| POST | `/api/carts` | Create an account-owned or guest cart | `201` |
 | GET | `/api/carts/:cartId` | Get a cart | `200` |
 | POST | `/api/carts/:cartId/items` | Add artwork quantities to a cart | `200` |
 | PUT | `/api/carts/:cartId/items/:productSlug` | Set an artwork's cart quantity | `200` |
@@ -63,11 +63,66 @@ JSON. Send `Content-Type: application/json` with JSON request bodies.
 | DELETE | `/api/carts/:cartId` | Delete a cart | `204` |
 | GET | `/api/orders` | List the logged-in user's orders | `200` |
 | GET | `/api/orders/:reference` | Get one of the user's orders | `200` |
-| POST | `/api/orders` | Create an order from a cart or submitted items | `201` |
+| POST | `/api/orders` | Create a guest or account order from a cart or submitted items | `201` |
+| POST | `/api/orders/track` | Track an order using its reference and email address | `200` |
 | POST | `/api/payments/orders/:reference/flutterwave` | Create hosted Flutterwave checkout | `200` |
 | GET | `/api/payments/flutterwave/callback` | Verify checkout return and redirect | `303` |
 | POST | `/api/payments/flutterwave/webhook` | Verify a Flutterwave payment webhook | `200` |
 | POST | `/api/contact` | Submit a contact message | `201` |
+| GET | `/api/admin/orders` | Search and filter orders (admin only) | `200` |
+| GET | `/api/admin/orders/:reference` | View order, history, notes, payments, and email attempts (admin only) | `200` |
+| PATCH | `/api/admin/orders/:reference` | Update order status (admin only) | `200` |
+| POST | `/api/admin/orders/:reference/notes` | Add an internal order note (admin only) | `201` |
+| PATCH | `/api/admin/orders/:reference/shipping` | Save DHL tracking and shipping status (admin only) | `200` |
+| PATCH | `/api/admin/orders/:reference/digital-delivery` | Email a digital delivery link (admin only) | `200` |
+| GET/POST/DELETE | `/api/admin/notification-recipients` | Manage new-order email recipients (admin only) | `200`/`201`/`204` |
+
+For Flutterwave, configure `FLW_SECRET_KEY` and a random `FLW_SECRET_HASH` in
+the backend environment. Set `API_BASE_URL` to the public API origin that
+Flutterwave can reach (HTTPS in production; use a tunnel URL for local
+Flutterwave testing). The checkout return is verified by
+`/api/payments/flutterwave/callback`. Also set the webhook URL in the
+Flutterwave dashboard to
+`https://<api-host>/api/payments/flutterwave/webhook` and enable charge
+notifications. To ensure the API's per-order payment choice is honored, turn
+off **Enable Dashboard Payment Options** in the Flutterwave account settings.
+Hosted card checkout uses `card`; hosted mobile-money checkout uses
+`mobilemoney` and requires orders to be priced in RWF. The customer selects
+the available network on Flutterwave's hosted page.
+
+### Guest checkout and fulfillment
+
+Cart endpoints support both authenticated customers and guests. A cart ID is a
+bearer identifier, so keep it private. `POST /api/orders` accepts either a
+`cartId` or submitted `items`, plus `customer` contact details when they are
+not available on the signed-in account. Physical artwork requires a
+`shippingAddress`; digital artwork does not. A submitted-items checkout must
+include an `Idempotency-Key` header. Cart checkouts use the cart ID as their
+idempotency key unless a header is provided.
+
+Shipping defaults to zero when no rate is configured. To configure rates, set
+`SHIPPING_RATES_JSON` to country (or `DEFAULT`) keys with currency amounts,
+for example:
+
+```env
+SHIPPING_RATES_JSON={"RW":{"RWF":5000},"DEFAULT":{"USD":25,"RWF":10000}}
+```
+
+Products default to `kind: "physical"`; administrators can set
+`kind: "digital"` when creating or updating artwork. After payment, an
+administrator can provide an HTTPS delivery URL through the digital-delivery
+endpoint. Physical orders can be advanced with the admin status and DHL
+tracking endpoints. Order tracking requires both the order reference and the
+customer email; it does not expose a digital delivery URL.
+
+Order confirmation and order-manager email attempts are logged. Configure
+`ORDER_NOTIFICATION_EMAILS` as a comma-separated list when notifications
+should go to people other than the bootstrap administrator. Optional
+`BRAND_LOGO_URL` must be an HTTPS URL.
+
+Customers can track their account orders through the authenticated order
+endpoints or use `POST /api/orders/track` with `{ "reference": "...",
+"email": "..." }`. Public tracking is rate-limited.
 
 ### Admin image uploads
 
@@ -185,19 +240,17 @@ use the same shape as the product listing. Unavailable or inactive artwork is
 omitted from artist and collection product lists.
  
 CORS allows the origin configured by `CORS_ORIGIN` (default
-`http://localhost:3000`) and credentials. Shipping calculation and refunds are
-not implemented. Cart IDs are private identifiers tied to the authenticated
-account.
+`http://localhost:3000`) and credentials. Refund processing is not yet exposed
+through this API; an order cannot be marked refunded through the admin status
+endpoint.
 
 ## Notes
 
 - `.env` is ignored by Git. Never commit real secrets.
-- Startup uses `sequelize.sync()` to create missing tables and applies
-  idempotent additive schema updates for account ownership and payment columns.
-  It does not alter existing columns here. This repository does not yet have a
-  configured versioned migration workflow; establish and test one before
-  making production schema changes. Do not use destructive sync options in
-  production.
+- Startup uses `sequelize.sync()` to create missing tables, then applies the
+  versioned, additive order-fulfillment migration for existing tables. Do not
+  use destructive sync options in production. Review and back up the production
+  database before deploying schema changes.
 - The built-in rate limiter uses in-memory state. It is suitable for a
   single API instance; use a shared rate-limit store before running multiple
   instances so limits are consistent across them.

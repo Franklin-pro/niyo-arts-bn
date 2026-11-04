@@ -14,7 +14,7 @@ import { serializeProduct } from "./catalog.controller.js";
 
 async function findCart(
   cartId: string,
-  userId: string,
+  userId: string | null,
   transaction?: Transaction,
 ) {
   const cart = await Cart.findOne({
@@ -25,7 +25,7 @@ async function findCart(
   return cart;
 }
 
-async function loadCart(cartId: string, userId: string) {
+async function loadCart(cartId: string, userId: string | null) {
   const cart = await Cart.findOne({
     where: { id: cartId, userId },
     include: [
@@ -109,7 +109,7 @@ export async function createCart(
   req: AuthenticatedRequest,
   res: Response,
 ): Promise<void> {
-  const cart = await Cart.create({ userId: req.user!.id });
+  const cart = await Cart.create({ userId: req.user?.id ?? null });
   res.status(201).json({
     data: { id: cart.id, items: [], itemCount: 0, subtotal: 0, currency: "USD" },
   });
@@ -120,7 +120,7 @@ export async function getCart(
   res: Response,
 ): Promise<void> {
   const { cartId } = cartIdParamSchema.parse(req.params);
-  res.status(200).json({ data: serializeCart(await loadCart(cartId, req.user!.id)) });
+  res.status(200).json({ data: serializeCart(await loadCart(cartId, req.user?.id ?? null)) });
 }
 
 export async function deleteCart(
@@ -129,7 +129,7 @@ export async function deleteCart(
 ): Promise<void> {
   const { cartId } = cartIdParamSchema.parse(req.params);
   await sequelize.transaction(async (transaction) => {
-    const cart = await findCart(cartId, req.user!.id, transaction);
+    const cart = await findCart(cartId, req.user?.id ?? null, transaction);
     await cart.destroy({ transaction });
   });
   res.status(204).end();
@@ -141,10 +141,10 @@ export async function clearCart(
 ): Promise<void> {
   const { cartId } = cartIdParamSchema.parse(req.params);
   await sequelize.transaction(async (transaction) => {
-    const cart = await findCart(cartId, req.user!.id, transaction);
+    const cart = await findCart(cartId, req.user?.id ?? null, transaction);
     await CartItem.destroy({ where: { cartId: cart.id }, transaction });
   });
-  res.status(200).json({ data: serializeCart(await loadCart(cartId, req.user!.id)) });
+  res.status(200).json({ data: serializeCart(await loadCart(cartId, req.user?.id ?? null)) });
 }
 
 export async function addCartItem(
@@ -154,7 +154,7 @@ export async function addCartItem(
   const { cartId } = cartIdParamSchema.parse(req.params);
   const input = addCartItemSchema.parse(req.body);
   await sequelize.transaction(async (transaction) => {
-    const cart = await findCart(cartId, req.user!.id, transaction);
+    const cart = await findCart(cartId, req.user?.id ?? null, transaction);
     const product = await requireActiveProduct(input.productSlug, transaction);
     await ensureCartCurrency(cart.id, product, transaction);
     const existing = await CartItem.findOne({
@@ -179,7 +179,7 @@ export async function addCartItem(
       );
     }
   });
-  res.status(200).json({ data: serializeCart(await loadCart(cartId, req.user!.id)) });
+  res.status(200).json({ data: serializeCart(await loadCart(cartId, req.user?.id ?? null)) });
 }
 
 export async function updateCartItem(
@@ -189,7 +189,7 @@ export async function updateCartItem(
   const { cartId, productSlug } = cartItemParamSchema.parse(req.params);
   const { quantity } = updateCartItemSchema.parse(req.body);
   await sequelize.transaction(async (transaction) => {
-    const cart = await findCart(cartId, req.user!.id, transaction);
+    const cart = await findCart(cartId, req.user?.id ?? null, transaction);
     const product = await requireActiveProduct(productSlug, transaction);
     await ensureCartCurrency(cart.id, product, transaction, productSlug);
     const item = await CartItem.findOne({
@@ -200,7 +200,7 @@ export async function updateCartItem(
     if (!item) throw new HttpError(404, "Cart item not found.");
     await item.update({ quantity }, { transaction });
   });
-  res.status(200).json({ data: serializeCart(await loadCart(cartId, req.user!.id)) });
+  res.status(200).json({ data: serializeCart(await loadCart(cartId, req.user?.id ?? null)) });
 }
 
 export async function deleteCartItem(
@@ -209,7 +209,7 @@ export async function deleteCartItem(
 ): Promise<void> {
   const { cartId, productSlug } = cartItemParamSchema.parse(req.params);
   await sequelize.transaction(async (transaction) => {
-    const cart = await findCart(cartId, req.user!.id, transaction);
+    const cart = await findCart(cartId, req.user?.id ?? null, transaction);
     const item = await CartItem.findOne({
       where: { cartId: cart.id, productSlug },
       transaction,
@@ -218,5 +218,5 @@ export async function deleteCartItem(
     if (!item) throw new HttpError(404, "Cart item not found.");
     await item.destroy({ transaction });
   });
-  res.status(200).json({ data: serializeCart(await loadCart(cartId, req.user!.id)) });
+  res.status(200).json({ data: serializeCart(await loadCart(cartId, req.user?.id ?? null)) });
 }

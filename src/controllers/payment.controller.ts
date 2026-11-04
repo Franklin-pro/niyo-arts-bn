@@ -1,7 +1,12 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { Request, Response } from "express";
-import { Order, PaymentAttempt } from "../models/index.js";
+import { Order, OrderItem, OrderStatusHistory, PaymentAttempt } from "../models/index.js";
+import { sequelize } from "../config/database.js";
 import { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import {
+  sendOrderManagerNotification,
+  sendOrderStatusNotification,
+} from "../services/email.service.js";
 import { HttpError } from "../utils/http-error.js";
 import { slugParamSchema } from "../validators/catalog.validators.js";
 
@@ -36,7 +41,7 @@ export async function startFlutterwavePayment(
 ): Promise<void> {
   const { slug: reference } = slugParamSchema.parse({ slug: req.params.reference });
   const order = await Order.findOne({
-    where: { reference, userId: req.user!.id },
+    where: { reference, userId: req.user?.id ?? null },
   });
   if (!order) throw new HttpError(404, "Order not found.");
   if (order.paymentStatus === "successful") {
@@ -60,8 +65,12 @@ export async function startFlutterwavePayment(
     return;
   }
 
-  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-  const redirectUrl = new URL("/payment-result", frontendUrl).toString();
+  const apiBaseUrl =
+    process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 4000}`;
+  const redirectUrl = new URL(
+    "/api/payments/flutterwave/callback",
+    apiBaseUrl,
+  ).toString();
   const secret = requireFlutterwaveSecret();
   const paymentReference = `${order.reference}-${randomBytes(6).toString("hex").toUpperCase()}`;
   let response: globalThis.Response;
@@ -74,10 +83,10 @@ export async function startFlutterwavePayment(
       },
       body: JSON.stringify({
         tx_ref: paymentReference,
-        amount: Number(order.total),
+        amount: order.total,
         currency: order.currency,
         redirect_url: redirectUrl,
-        payment_options: order.paymentMethod === "mobile_money" ? "mobilemoneyrwanda" : "card",
+        payment_options: order.paymentMethod === "mobile_money" ? "mobilemoney" : "card",
         customer: {
           email: order.customerEmail,
           name: order.customerName,
@@ -108,12 +117,16 @@ export async function startFlutterwavePayment(
       checkoutUrl = null;
     }
   }
+  const allowedHosts = [
+    "checkout.flutterwave.com",
+    "checkout-v2.dev-flutterwave.com" // Required for test mode
+  ];
   if (
     !response.ok ||
     payload?.status !== "success" ||
     !checkoutUrl ||
     checkoutUrl.protocol !== "https:" ||
-    checkoutUrl.hostname !== "checkout.flutterwave.com"
+    !allowedHosts.includes(checkoutUrl.hostname)
   ) {
     console.error("Flutterwave rejected the checkout request:", payload);
     throw new HttpError(502, "The payment provider could not create checkout.");
@@ -149,13 +162,19 @@ async function verifyTransaction(
   status: "successful" | "failed" | "pending";
   orderReference: string;
 }> {
-  const response = await fetch(
-    `${FLUTTERWAVE_API}/transactions/${encodeURIComponent(transactionId)}/verify`,
-    {
+  let response: globalThis.Response;
+  try {
+    response = await fetch(
+      `${FLUTTERWAVE_API}/transactions/${encodeURIComponent(transactionId)}/verify`,
+      {
       headers: { Authorization: `Bearer ${requireFlutterwaveSecret()}` },
-      signal: AbortSignal.timeout(15_000),
-    },
-  );
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+  } catch (error) {
+    console.error("Flutterwave transaction verification failed:", error);
+    throw new HttpError(502, "Could not connect to the payment provider.");
+  }
   const payload = (await response.json().catch(() => null)) as {
     status?: string;
     data?: FlutterwaveTransaction | null;
@@ -165,11 +184,16 @@ async function verifyTransaction(
   }
   const transaction = payload.data;
   if (
+    !Number.isSafeInteger(Number(transaction.id)) ||
+    Number(transaction.id) <= 0 ||
     typeof transaction.tx_ref !== "string" ||
+    transaction.tx_ref.trim().length === 0 ||
     typeof transaction.status !== "string" ||
+    transaction.status.trim().length === 0 ||
     typeof transaction.currency !== "string" ||
-    !Number.isFinite(Number(transaction.id)) ||
-    !Number.isFinite(Number(transaction.amount))
+    transaction.currency.trim().length === 0 ||
+    !Number.isFinite(Number(transaction.amount)) ||
+    Number(transaction.amount) < 0
   ) {
     throw new HttpError(502, "The payment provider returned invalid transaction details.");
   }
@@ -189,33 +213,75 @@ async function verifyTransaction(
     ) {
       throw new HttpError(400, "The verified payment amount or currency does not match the order.");
     }
-    if (attempt.status !== "successful") {
-      await attempt.update({
-        status: "successful",
-        transactionId: String(transaction.id),
+    await sequelize.transaction(async (dbTransaction) => {
+      const currentAttempt = await PaymentAttempt.findByPk(attempt.id, {
+        transaction: dbTransaction,
+        lock: dbTransaction.LOCK.UPDATE,
       });
-    }
-    if (order.paymentStatus !== "successful") {
-      await order.update({
-        paymentStatus: "successful",
-        ...(order.status === "pending_payment" ? { status: "processing" } : {}),
+      const currentOrder = await Order.findByPk(order.id, {
+        transaction: dbTransaction,
+        lock: dbTransaction.LOCK.UPDATE,
       });
-    }
+      if (!currentAttempt || !currentOrder) {
+        throw new HttpError(404, "The payment does not match a known order.");
+      }
+      if (currentAttempt.status === "pending") {
+        await currentAttempt.update({
+          status: "successful",
+          transactionId: String(transaction.id),
+        }, { transaction: dbTransaction });
+      }
+      const previousStatus = currentOrder.status;
+      if (currentOrder.paymentStatus !== "successful") {
+        await currentOrder.update({
+          paymentStatus: "successful",
+          ...(previousStatus === "pending_payment" ? { status: "confirmed" } : {}),
+        }, { transaction: dbTransaction });
+        if (previousStatus === "pending_payment") {
+          await OrderStatusHistory.create({
+            orderId: currentOrder.id,
+            fromStatus: previousStatus,
+            toStatus: "confirmed",
+            actorUserId: null,
+            detail: "Payment verified successfully.",
+          }, { transaction: dbTransaction });
+        }
+      }
+    });
+    const confirmedOrder = await Order.findByPk(order.id);
+    if (!confirmedOrder) throw new HttpError(404, "The payment does not match a known order.");
+    const items = await OrderItem.findAll({ where: { orderId: confirmedOrder.id } });
+    await Promise.all([
+      sendOrderStatusNotification(confirmedOrder, "confirmed"),
+      sendOrderManagerNotification(confirmedOrder, items, "payment_confirmed"),
+    ]);
     return { status: "successful", orderReference: order.reference };
   } else if (
     ["failed", "cancelled"].includes(transaction.status.toLowerCase()) &&
     attempt.status === "pending"
   ) {
-    await attempt.update({
-      status: "failed",
-      transactionId: String(transaction.id),
+    await sequelize.transaction(async (dbTransaction) => {
+      const currentAttempt = await PaymentAttempt.findByPk(attempt.id, {
+        transaction: dbTransaction,
+        lock: dbTransaction.LOCK.UPDATE,
+      });
+      const currentOrder = await Order.findByPk(order.id, {
+        transaction: dbTransaction,
+        lock: dbTransaction.LOCK.UPDATE,
+      });
+      if (!currentAttempt || !currentOrder || currentAttempt.status !== "pending") return;
+      await currentAttempt.update({
+        status: "failed",
+        transactionId: String(transaction.id),
+      }, { transaction: dbTransaction });
+      const pendingAttempts = await PaymentAttempt.count({
+        where: { orderId: currentOrder.id, status: "pending" },
+        transaction: dbTransaction,
+      });
+      if (pendingAttempts === 0 && currentOrder.paymentStatus !== "successful") {
+        await currentOrder.update({ paymentStatus: "failed" }, { transaction: dbTransaction });
+      }
     });
-    const pendingAttempts = await PaymentAttempt.count({
-      where: { orderId: order.id, status: "pending" },
-    });
-    if (pendingAttempts === 0 && order.paymentStatus !== "successful") {
-      await order.update({ paymentStatus: "failed" });
-    }
     return { status: "failed", orderReference: order.reference };
   }
   return { status: "pending", orderReference: order.reference };
@@ -270,4 +336,17 @@ export async function flutterwaveWebhook(
   }
   await verifyTransaction(String(body.data.id));
   res.status(200).end();
+}
+
+
+export async function getPaymentStatus(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const { reference } = req.params;
+  const order = await Order.findOne({ where: { reference } });
+  if (!order) {
+    throw new HttpError(404, "Order not found.");
+  }
+  res.json({ status: order.paymentStatus });
 }
