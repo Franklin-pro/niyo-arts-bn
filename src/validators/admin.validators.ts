@@ -20,7 +20,10 @@ export const artistAdminSchema = z.object({
   location: z.string().trim().min(1).max(120),
   medium: z.string().trim().min(1).max(200),
   bio: z.string().trim().min(1),
-  imageUrl: z.string().url(),
+  imageUrl: z.preprocess(
+    (value) => typeof value === "string" && value.trim() === "" ? undefined : value,
+    z.string().url().nullable().optional(),
+  ),
 }).strict();
 
 export const collectionAdminSchema = z.object({

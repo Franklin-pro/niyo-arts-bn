@@ -1,11 +1,18 @@
 import { QueryTypes } from "sequelize";
-import { applySchemaUpdates } from "../config/schema-updates.js";
+import {
+  applySchemaUpdates,
+  makeArtistImageUrlNullable,
+} from "../config/schema-updates.js";
 import { sequelize } from "../config/database.js";
 
 const migrations = [
   {
     version: "202611030001_order_fulfillment",
     up: applySchemaUpdates,
+  },
+  {
+    version: "202611050001_artist_image_nullable",
+    up: makeArtistImageUrlNullable,
   },
 ] as const;
 

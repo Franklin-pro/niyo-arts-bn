@@ -122,3 +122,14 @@ export async function applySchemaUpdates(): Promise<void> {
     });
   }
 }
+
+export async function makeArtistImageUrlNullable(): Promise<void> {
+  const queryInterface = sequelize.getQueryInterface();
+  const artistColumns = await queryInterface.describeTable("artists");
+  if (artistColumns.imageUrl?.allowNull === false) {
+    await queryInterface.changeColumn("artists", "imageUrl", {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    });
+  }
+}

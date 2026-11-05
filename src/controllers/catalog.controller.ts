@@ -16,7 +16,7 @@ export interface SerializedProduct {
     name: string;
     location: string;
     medium: string;
-    imageUrl: string;
+    imageUrl: string | null;
   } | null;
   type: string;
   kind: "physical" | "digital";
