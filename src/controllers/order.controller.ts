@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { Request, Response } from "express";
 import { Op } from "sequelize";
 import { sequelize } from "../config/database.js";
@@ -6,34 +6,92 @@ import {
   Artist,
   Cart,
   CartItem,
+
   Order,
   OrderItem,
+  OrderStatusHistory,
   PaymentAttempt,
   Product,
   User,
 } from "../models/index.js";
 import { AuthenticatedRequest } from "../middleware/auth.middleware.js";
-import { sendOrderConfirmation } from "../services/email.service.js";
+import {
+  sendOrderConfirmation,
+  sendOrderManagerNotification,
+  sendTrackedNotification,
+} from "../services/email.service.js";
 import { HttpError } from "../utils/http-error.js";
 import { slugParamSchema } from "../validators/catalog.validators.js";
-import { createOrderSchema } from "../validators/order.validators.js";
+import { getShippingCost } from "../services/shipping.service.js";
+import { createOrderSchema, trackOrderSchema } from "../validators/order.validators.js";
+
+function serializeCheckoutOrder(order: Order, idempotent: boolean) {
+  return {
+    reference: order.reference,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    paymentMethod: order.paymentMethod,
+    paymentProvider: order.paymentProvider,
+    total: Number(order.total),
+    subtotal: Number(order.subtotal),
+    shippingCost: Number(order.shippingCost),
+    currency: order.currency,
+    email: order.customerEmail,
+    createdAt: order.createdAt,
+    ...(idempotent ? { idempotent: true } : {}),
+  };
+}
 
 export async function createOrder(
   req: AuthenticatedRequest,
   res: Response,
 ): Promise<void> {
   const input = createOrderSchema.parse(req.body);
-  const customer = await User.findByPk(req.user!.id);
-  if (!customer || !customer.phone) {
-    throw new HttpError(400, "Add a phone number to your account before ordering.");
+  const account = req.user ? await User.findByPk(req.user.id) : null;
+  if (req.user && !account) throw new HttpError(401, "The customer account no longer exists.");
+  const customerName = input.customer?.name || account?.name;
+  const customerEmail = input.customer?.email?.toLowerCase() || account?.email;
+  const customerPhone = input.customer?.phone || account?.phone;
+  if (!customerName || !customerEmail || !customerPhone) {
+    throw new HttpError(400, "Provide the customer's full name, email address, and phone number.");
   }
-  const customerPhone = customer.phone;
+  const requestIdempotencyKey = req.header("Idempotency-Key")?.trim() ||
+    (input.cartId ? `cart:${input.cartId}` : null);
+  if (!requestIdempotencyKey) {
+    throw new HttpError(400, "Checkout requires an Idempotency-Key header when submitting items directly.");
+  }
+  if (requestIdempotencyKey.length > 160) {
+    throw new HttpError(400, "Idempotency-Key must not exceed 160 characters.");
+  }
+  const idempotencyScope = account?.id ?? (input.cartId
+    ? `guest-cart:${input.cartId}`
+    : customerEmail);
+  const checkoutKey = createHash("sha256")
+    .update(`${idempotencyScope}:${requestIdempotencyKey}`)
+    .digest("hex");
+  const existingOrder = (await Order.findOne({
+    where: { checkoutKey, userId: account?.id ?? null },
+    include: [{ model: OrderItem, as: "items" }],
+  })) || (await Order.findOne({
+      where: {
+        checkoutKey: requestIdempotencyKey,
+        userId: account?.id ?? null,
+        customerEmail,
+      },
+      include: [{ model: OrderItem, as: "items" }],
+    }));
+  if (existingOrder) {
+    res.status(200).json({
+      data: serializeCheckoutOrder(existingOrder, true),
+    });
+    return;
+  }
 
   const { order, items: orderItems } = await sequelize.transaction(async (transaction) => {
     let requestedItems = input.items ?? [];
     if (input.cartId) {
       const cart = await Cart.findOne({
-        where: { id: input.cartId, userId: customer.id },
+        where: { id: input.cartId, userId: account?.id ?? null },
         transaction,
         lock: transaction.LOCK.UPDATE,
       });
@@ -62,6 +120,7 @@ export async function createOrder(
       where: { slug: { [Op.in]: [...quantities.keys()] }, isActive: true },
       include: [{ model: Artist, as: "artist", required: true }],
       transaction,
+      lock: transaction.LOCK.UPDATE,
     });
     if (products.length !== quantities.size) {
       throw new HttpError(400, "One or more requested artworks are unavailable.");
@@ -79,26 +138,42 @@ export async function createOrder(
     if (!currency || orderLines.some((line) => line.product.currency !== currency)) {
       throw new HttpError(400, "An order cannot contain artwork priced in different currencies.");
     }
-    const totalCents = orderLines.reduce(
+    const containsPhysicalArtwork = orderLines.some((line) => line.product.kind !== "digital");
+    const shippingAddress = input.shippingAddress || null;
+    const subtotalCents = orderLines.reduce(
       (sum, line) => sum + Math.round(Number(line.product.price) * 100) * line.quantity,
       0,
     );
+    let shippingCents = 0;
+    if (containsPhysicalArtwork) {
+      if (!shippingAddress) {
+        throw new HttpError(400, "A shipping address is required for physical artwork.");
+      }
+      shippingCents = Math.round(getShippingCost(shippingAddress.country, currency) * 100);
+    }
+    const totalCents = subtotalCents + shippingCents;
 
     const orderRecord = await Order.create(
       {
-        reference: `NY-${randomBytes(5).toString("hex").toUpperCase()}`,
-        userId: customer.id,
-        customerName: customer.name,
-        customerEmail: customer.email,
+        reference: `NY-${randomBytes(16).toString("hex").toUpperCase()}`,
+        checkoutKey,
+        userId: account?.id ?? null,
+        customerName,
+        customerEmail,
         customerPhone,
-        shippingAddress: {
-          address: input.shippingAddress.address,
-          city: input.shippingAddress.city,
-          country: input.shippingAddress.country,
-          ...(input.shippingAddress.postcode
-            ? { postcode: input.shippingAddress.postcode }
-            : {}),
-        },
+        shippingAddress: shippingAddress
+          ? {
+              address: shippingAddress.address,
+              city: shippingAddress.city,
+              country: shippingAddress.country,
+              ...(shippingAddress.postcode ? { postcode: shippingAddress.postcode } : {}),
+              ...(shippingAddress.instructions
+                ? { instructions: shippingAddress.instructions }
+                : {}),
+            }
+          : null,
+        subtotal: (subtotalCents / 100).toFixed(2),
+        shippingCost: (shippingCents / 100).toFixed(2),
         paymentMethod: input.payment.method,
         paymentProvider: "Flutterwave",
         paymentPhone:
@@ -120,10 +195,21 @@ export async function createOrder(
       title: product.title,
       artistName,
       imageUrl: product.imageUrl,
+      productKind: product.kind || "physical",
       quantity,
       unitPrice: product.price,
     }));
     await OrderItem.bulkCreate(createdItems, { transaction });
+    await OrderStatusHistory.create(
+      {
+        orderId: orderRecord.id,
+        fromStatus: null,
+        toStatus: "pending_payment",
+        actorUserId: account?.id ?? null,
+        detail: "Order created.",
+      },
+      { transaction },
+    );
     if (input.cartId) {
       await CartItem.destroy({
         where: { cartId: input.cartId },
@@ -132,35 +218,33 @@ export async function createOrder(
     }
     return {
       order: orderRecord,
-      items: createdItems.map(({ title, artistName, quantity, unitPrice }) => ({
+      items: createdItems.map(({ title, artistName, quantity, unitPrice, imageUrl }) => ({
         title,
         artistName,
         quantity,
         unitPrice,
+        imageUrl,
       })),
     };
   });
 
-  let emailSent = true;
-  try {
-    await sendOrderConfirmation({ order, items: orderItems });
-  } catch (error) {
-    emailSent = false;
-    console.error(`Failed to send order confirmation for ${order.reference}:`, error);
-  }
+  const emailResults = await Promise.all([
+    sendTrackedNotification({
+      orderId: order.id,
+      idempotencyKey: `order-confirmation:${order.id}:${order.customerEmail}`,
+      notificationType: "order_confirmation",
+      recipient: order.customerEmail,
+      send: () => sendOrderConfirmation({ order, items: orderItems }),
+    }),
+    sendOrderManagerNotification(order, orderItems),
+  ]);
+  const emailSent = emailResults[0];
 
   res.status(201).json({
     data: {
-      reference: order.reference,
-      status: order.status,
-      paymentStatus: order.paymentStatus,
-      paymentMethod: order.paymentMethod,
-      paymentProvider: order.paymentProvider,
-      total: Number(order.total),
-      currency: order.currency,
-      email: order.customerEmail,
-      createdAt: order.createdAt,
+      ...serializeCheckoutOrder(order, false),
       confirmationEmail: emailSent ? "sent" : "failed",
+      managerNotification: emailResults[1] ? "sent" : "failed",
     },
     ...(!emailSent
       ? { message: "Order created, but the confirmation email could not be sent." }
@@ -198,4 +282,46 @@ export async function getMyOrder(
   });
   if (!order) throw new HttpError(404, "Order not found.");
   res.status(200).json({ data: order });
+}
+
+export async function trackPublicOrder(req: Request, res: Response): Promise<void> {
+  const { reference, email } = trackOrderSchema.parse(req.body);
+  const order = await Order.findOne({
+    where: { reference, customerEmail: email.toLowerCase() },
+    include: [
+      { model: OrderItem, as: "items" },
+      { model: OrderStatusHistory, as: "history", attributes: ["fromStatus", "toStatus", "detail", "createdAt"] },
+    ],
+  });
+  if (!order) throw new HttpError(404, "Order not found.");
+  res.status(200).json({
+    data: {
+      reference: order.reference,
+      createdAt: order.createdAt,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      currency: order.currency,
+      total: order.total,
+      items: (order.items || []).map((item) => ({
+        title: item.title,
+        artistName: item.artistName,
+        imageUrl: item.imageUrl,
+        productKind: item.productKind,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        ...(item.productKind === "digital"
+          ? { digitalDeliveryStatus: item.digitalDeliveryStatus }
+          : {}),
+      })),
+      shipping: order.shippingAddress
+        ? {
+            address: order.shippingAddress,
+            trackingNumber: order.trackingNumber,
+            trackingUrl: order.trackingUrl,
+            shippedAt: order.shippedAt,
+          }
+        : null,
+      history: order.history,
+    },
+  });
 }

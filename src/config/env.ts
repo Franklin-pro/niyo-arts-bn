@@ -8,6 +8,7 @@ const requiredInProduction = [
   "ADMIN_PASSWORD",
   "FLW_SECRET_KEY",
   "FLW_SECRET_HASH",
+  "API_BASE_URL",
   "FRONTEND_URL",
   "SMTP_HOST",
   "SMTP_PORT",
@@ -48,6 +49,14 @@ export function validateEnv(): void {
       }
     } catch {
       throw new Error("FRONTEND_URL must be a valid HTTP or HTTPS URL.");
+    }
+    try {
+      const apiBaseUrl = new URL(process.env.API_BASE_URL || "");
+      if (apiBaseUrl.protocol !== "https:" || apiBaseUrl.pathname !== "/" || apiBaseUrl.search || apiBaseUrl.hash) {
+        throw new Error();
+      }
+    } catch {
+      throw new Error("API_BASE_URL must be an HTTPS origin without a path.");
     }
 
     const corsOrigins = (process.env.CORS_ORIGIN || "")
@@ -90,6 +99,53 @@ export function validateEnv(): void {
       Number(smtpPort) < 1)
   ) {
     throw new Error("SMTP_PORT must be an integer between 1 and 65535.");
+  }
+
+  if (process.env.SHIPPING_RATES_JSON) {
+    let rates: unknown;
+    try {
+      rates = JSON.parse(process.env.SHIPPING_RATES_JSON);
+    } catch {
+      throw new Error("SHIPPING_RATES_JSON must be valid JSON.");
+    }
+    if (
+      typeof rates !== "object" ||
+      rates === null ||
+      Array.isArray(rates) ||
+      Object.values(rates).some(
+        (currencyRates) =>
+          typeof currencyRates !== "object" ||
+          currencyRates === null ||
+          Array.isArray(currencyRates) ||
+          Object.values(currencyRates).some(
+            (amount) => typeof amount !== "number" || !Number.isFinite(amount) || amount < 0,
+          ),
+      )
+    ) {
+      throw new Error(
+        "SHIPPING_RATES_JSON must map country codes (or DEFAULT) to currency codes and non-negative amounts.",
+      );
+    }
+
+  }
+
+  const notificationEmails = process.env.ORDER_NOTIFICATION_EMAILS;
+  if (
+    notificationEmails &&
+    notificationEmails.split(",").some((email) =>
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()),
+    )
+  ) {
+    throw new Error("ORDER_NOTIFICATION_EMAILS must be a comma-separated list of valid email addresses.");
+  }
+
+  if (process.env.BRAND_LOGO_URL) {
+    try {
+      const logoUrl = new URL(process.env.BRAND_LOGO_URL);
+      if (logoUrl.protocol !== "https:") throw new Error();
+    } catch {
+      throw new Error("BRAND_LOGO_URL must be a valid HTTPS URL.");
+    }
   }
 }
 

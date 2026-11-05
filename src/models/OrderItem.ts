@@ -18,8 +18,11 @@ export class OrderItem extends Model<
   declare title: string;
   declare artistName: string;
   declare imageUrl: string;
+  declare productKind: "physical" | "digital";
   declare quantity: number;
   declare unitPrice: string;
+  declare digitalDeliveryStatus: CreationOptional<"pending" | "sent">;
+  declare digitalDeliveryUrl: string | null;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -41,8 +44,19 @@ OrderItem.init(
     title: { type: DataTypes.STRING(200), allowNull: false },
     artistName: { type: DataTypes.STRING(160), allowNull: false },
     imageUrl: { type: DataTypes.TEXT, allowNull: false },
+    productKind: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "physical",
+    },
     quantity: { type: DataTypes.INTEGER, allowNull: false },
     unitPrice: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
+    digitalDeliveryStatus: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "pending",
+    },
+    digitalDeliveryUrl: { type: DataTypes.TEXT, allowNull: true },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,
   },

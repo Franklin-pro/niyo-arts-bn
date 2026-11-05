@@ -17,7 +17,7 @@ export class Artist extends Model<
   declare location: string;
   declare medium: string;
   declare bio: string;
-  declare imageUrl: string;
+  declare imageUrl: CreationOptional<string | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -34,7 +34,7 @@ Artist.init(
     location: { type: DataTypes.STRING(120), allowNull: false },
     medium: { type: DataTypes.STRING(200), allowNull: false },
     bio: { type: DataTypes.TEXT, allowNull: false },
-    imageUrl: { type: DataTypes.TEXT, allowNull: false },
+    imageUrl: { type: DataTypes.TEXT, allowNull: true },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,
   },

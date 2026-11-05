@@ -3,10 +3,14 @@ import { Cart } from "./Cart.js";
 import { CartItem } from "./CartItem.js";
 import { Collection } from "./Collection.js";
 import { ContactMessage } from "./ContactMessage.js";
+import { EmailNotificationLog } from "./EmailNotificationLog.js";
 import { Order } from "./Order.js";
 import { OrderItem } from "./OrderItem.js";
+import { OrderNote } from "./OrderNote.js";
+import { OrderStatusHistory } from "./OrderStatusHistory.js";
 import { PaymentAttempt } from "./PaymentAttempt.js";
 import { Product } from "./Product.js";
+import { NotificationRecipient } from "./NotificationRecipient.js";
 import { User } from "./User.js";
 
 Artist.hasMany(Product, { foreignKey: "artistId", as: "products" });
@@ -35,6 +39,12 @@ Order.hasMany(PaymentAttempt, {
   onDelete: "CASCADE",
 });
 PaymentAttempt.belongsTo(Order, { foreignKey: "orderId", as: "order" });
+Order.hasMany(OrderStatusHistory, { foreignKey: "orderId", as: "history" });
+OrderStatusHistory.belongsTo(Order, { foreignKey: "orderId", as: "order" });
+Order.hasMany(OrderNote, { foreignKey: "orderId", as: "notes" });
+OrderNote.belongsTo(Order, { foreignKey: "orderId", as: "order" });
+Order.hasMany(EmailNotificationLog, { foreignKey: "orderId", as: "emailNotifications" });
+EmailNotificationLog.belongsTo(Order, { foreignKey: "orderId", as: "order" });
 
 export {
   Artist,
@@ -42,8 +52,12 @@ export {
   CartItem,
   Collection,
   ContactMessage,
+  EmailNotificationLog,
+  NotificationRecipient,
   Order,
   OrderItem,
+  OrderNote,
+  OrderStatusHistory,
   PaymentAttempt,
   Product,
   User,

@@ -16,9 +16,10 @@ export interface SerializedProduct {
     name: string;
     location: string;
     medium: string;
-    imageUrl: string;
+    imageUrl: string | null;
   } | null;
   type: string;
+  kind: "physical" | "digital";
   category: string;
   price: number;
   currency: string;
@@ -41,6 +42,7 @@ export function serializeProduct(product: Product): SerializedProduct {
         }
       : null,
     type: product.type,
+    kind: product.kind || "physical",
     category: product.category,
     price: Number(product.price),
     currency: product.currency,

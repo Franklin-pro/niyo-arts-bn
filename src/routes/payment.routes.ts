@@ -4,7 +4,7 @@ import {
   flutterwaveWebhook,
   startFlutterwavePayment,
 } from "../controllers/payment.controller.js";
-import { requireAuth, requireUser } from "../middleware/auth.middleware.js";
+import { optionalAuth } from "../middleware/auth.middleware.js";
 import { asyncHandler } from "../utils/async-handler.js";
 
 const router = Router();
@@ -12,8 +12,7 @@ router.post("/flutterwave/webhook", asyncHandler(flutterwaveWebhook));
 router.get("/flutterwave/callback", asyncHandler(flutterwaveCallback));
 router.post(
   "/orders/:reference/flutterwave",
-  asyncHandler(requireAuth),
-  requireUser,
+  asyncHandler(optionalAuth),
   asyncHandler(startFlutterwavePayment),
 );
 
