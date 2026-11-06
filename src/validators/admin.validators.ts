@@ -1,5 +1,20 @@
 import { z } from "zod";
 
+export const productImagesSchema = z.object({
+  front: z.string().url().max(2048).refine(
+    (value) => new URL(value).protocol === "https:",
+    "Product images must use HTTPS.",
+  ),
+  right: z.string().url().max(2048).refine(
+    (value) => new URL(value).protocol === "https:",
+    "Product images must use HTTPS.",
+  ),
+  left: z.string().url().max(2048).refine(
+    (value) => new URL(value).protocol === "https:",
+    "Product images must use HTTPS.",
+  ),
+}).strict();
+
 export const productAdminSchema = z.object({
   slug: z.string().trim().min(1).max(160),
   title: z.string().trim().min(1).max(200),
@@ -7,11 +22,18 @@ export const productAdminSchema = z.object({
   kind: z.enum(["physical", "digital"]).default("physical"),
   type: z.string().trim().min(1).max(120),
   category: z.string().trim().min(1).max(80),
-  price: z.number().positive().finite(),
+  size: z.preprocess(
+    (value) => value === "" ? undefined : value,
+    z.string().trim().min(1).max(120).nullable().optional(),
+  ),
+  price: z.coerce.number().positive().finite(),
   currency: z.string().trim().regex(/^[A-Za-z]{3}$/).transform((value) => value.toUpperCase()),
-  imageUrl: z.string().url(),
+  images: productImagesSchema.optional(),
   description: z.string().trim().min(1),
-  isActive: z.boolean().optional(),
+  isActive: z.preprocess(
+    (value) => value === "true" ? true : value === "false" ? false : value,
+    z.boolean().optional(),
+  ),
 }).strict();
 
 export const artistAdminSchema = z.object({
@@ -119,6 +141,15 @@ export const digitalDeliverySchema = z.object({
 
 export const contactStatusSchema = z.object({
   status: z.enum(["new", "read", "replied"]),
+}).strict();
+
+export const niyoEventSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  imageUrl: z.string().url().max(2048).refine(
+    (value) => new URL(value).protocol === "https:",
+    "Event images must use HTTPS.",
+  ),
+  description: z.string().trim().min(1).max(10000),
 }).strict();
 
 export const idParamSchema = z.object({

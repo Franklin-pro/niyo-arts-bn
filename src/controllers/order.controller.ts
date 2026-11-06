@@ -193,6 +193,7 @@ export async function createOrder(
       productId: product.id,
       productSlug: product.slug,
       title: product.title,
+      size: product.size,
       artistName,
       imageUrl: product.imageUrl,
       productKind: product.kind || "physical",
@@ -218,8 +219,9 @@ export async function createOrder(
     }
     return {
       order: orderRecord,
-      items: createdItems.map(({ title, artistName, quantity, unitPrice, imageUrl }) => ({
+      items: createdItems.map(({ title, size, artistName, quantity, unitPrice, imageUrl }) => ({
         title,
+        size,
         artistName,
         quantity,
         unitPrice,
@@ -304,6 +306,7 @@ export async function trackPublicOrder(req: Request, res: Response): Promise<voi
       total: order.total,
       items: (order.items || []).map((item) => ({
         title: item.title,
+        size: item.size,
         artistName: item.artistName,
         imageUrl: item.imageUrl,
         productKind: item.productKind,

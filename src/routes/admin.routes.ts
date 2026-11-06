@@ -27,18 +27,45 @@ import {
   updateAdminProduct,
   markDigitalDelivery,
   uploadAdminImage,
+  uploadAdminProductImages,
 } from "../controllers/admin.controller.js";
+import {
+  createAdminNiyoEvent,
+  deleteAdminCafeGalleryImage,
+  deleteAdminNiyoEvent,
+  listCafeGallery,
+  listMenu,
+  listNiyoEvents,
+  updateAdminNiyoEvent,
+  uploadAdminCafeGalleryImage,
+  uploadAdminCafeMenu,
+} from "../controllers/content.controller.js";
 import { requireAdmin, requireAuth } from "../middleware/auth.middleware.js";
-import { uploadSingleImage } from "../middleware/image-upload.middleware.js";
+import {
+  uploadSingleImage,
+  uploadSinglePdf,
+  uploadProductImages,
+} from "../middleware/image-upload.middleware.js";
 import { asyncHandler } from "../utils/async-handler.js";
 
 const router = Router();
 router.use(asyncHandler(requireAuth), requireAdmin);
 
 router.post("/images", uploadSingleImage, asyncHandler(uploadAdminImage));
+router.post("/products/images", uploadProductImages, asyncHandler(uploadAdminProductImages));
+router.post("/cafe/menu", uploadSinglePdf, asyncHandler(uploadAdminCafeMenu));
+router.put("/cafe/menu", uploadSinglePdf, asyncHandler(uploadAdminCafeMenu));
+router.get("/cafe/gallery", asyncHandler(listCafeGallery));
+router.get("/cafe/menu", asyncHandler(listMenu));
+router.post("/cafe/gallery", uploadSingleImage, asyncHandler(uploadAdminCafeGalleryImage));
+router.delete("/cafe/gallery/:id", asyncHandler(deleteAdminCafeGalleryImage));
+router.get("/events", asyncHandler(listNiyoEvents));
+router.post("/events", asyncHandler(createAdminNiyoEvent));
+router.put("/events/:id", asyncHandler(updateAdminNiyoEvent));
+router.delete("/events/:id", asyncHandler(deleteAdminNiyoEvent));
 router.get("/products", asyncHandler(listAdminProducts));
-router.post("/products", asyncHandler(createAdminProduct));
-router.put("/products/:slug", asyncHandler(updateAdminProduct));
+router.post("/products", uploadProductImages, asyncHandler(createAdminProduct));
+router.put("/products/:slug", uploadProductImages, asyncHandler(updateAdminProduct));
 router.delete("/products/:slug", asyncHandler(deleteAdminProduct));
 
 router.get("/artists", asyncHandler(listAdminArtists));

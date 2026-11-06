@@ -1,6 +1,7 @@
 import { Op, Order as SequelizeOrder } from "sequelize";
 import { Request, Response } from "express";
 import { Artist, Collection, Product } from "../models/index.js";
+import type { ProductImages } from "../models/Product.js";
 import { HttpError } from "../utils/http-error.js";
 import {
   productQuerySchema,
@@ -21,9 +22,11 @@ export interface SerializedProduct {
   type: string;
   kind: "physical" | "digital";
   category: string;
+  size: string | null;
   price: number;
   currency: string;
   imageUrl: string;
+  images: ProductImages | null;
   description: string;
 }
 
@@ -44,9 +47,11 @@ export function serializeProduct(product: Product): SerializedProduct {
     type: product.type,
     kind: product.kind || "physical",
     category: product.category,
+    size: product.size,
     price: Number(product.price),
     currency: product.currency,
     imageUrl: product.imageUrl,
+    images: product.images,
     description: product.description,
   };
 }

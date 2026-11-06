@@ -16,6 +16,7 @@ export class OrderItem extends Model<
   declare productId: string | null;
   declare productSlug: string;
   declare title: string;
+  declare size: CreationOptional<string | null>;
   declare artistName: string;
   declare imageUrl: string;
   declare productKind: "physical" | "digital";
@@ -42,6 +43,7 @@ OrderItem.init(
     productId: { type: DataTypes.UUID, allowNull: true },
     productSlug: { type: DataTypes.STRING(160), allowNull: false },
     title: { type: DataTypes.STRING(200), allowNull: false },
+    size: { type: DataTypes.STRING(120), allowNull: true },
     artistName: { type: DataTypes.STRING(160), allowNull: false },
     imageUrl: { type: DataTypes.TEXT, allowNull: false },
     productKind: {

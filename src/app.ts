@@ -12,6 +12,7 @@ import contactRoutes from "./routes/contact.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
+import contentRoutes from "./routes/content.routes.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware.js";
 
 const app = express();
@@ -45,6 +46,7 @@ app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api", contentRoutes);
 app.use("/api", catalogRoutes);
 app.use("/api/carts", cartRoutes);
 app.use("/api/orders", orderRoutes);

@@ -1,4 +1,6 @@
 import { Artist } from "./Artist.js";
+import { CafeGalleryImage } from "./CafeGalleryImage.js";
+import { CafeMenu } from "./CafeMenu.js";
 import { Cart } from "./Cart.js";
 import { CartItem } from "./CartItem.js";
 import { Collection } from "./Collection.js";
@@ -11,6 +13,7 @@ import { OrderStatusHistory } from "./OrderStatusHistory.js";
 import { PaymentAttempt } from "./PaymentAttempt.js";
 import { Product } from "./Product.js";
 import { NotificationRecipient } from "./NotificationRecipient.js";
+import { NiyoEvent } from "./NiyoEvent.js";
 import { User } from "./User.js";
 
 Artist.hasMany(Product, { foreignKey: "artistId", as: "products" });
@@ -48,12 +51,15 @@ EmailNotificationLog.belongsTo(Order, { foreignKey: "orderId", as: "order" });
 
 export {
   Artist,
+  CafeGalleryImage,
+  CafeMenu,
   Cart,
   CartItem,
   Collection,
   ContactMessage,
   EmailNotificationLog,
   NotificationRecipient,
+  NiyoEvent,
   Order,
   OrderItem,
   OrderNote,

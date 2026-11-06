@@ -133,3 +133,33 @@ export async function makeArtistImageUrlNullable(): Promise<void> {
     });
   }
 }
+
+export async function addProductImages(): Promise<void> {
+  const queryInterface = sequelize.getQueryInterface();
+  const productColumns = await queryInterface.describeTable("products");
+  if (!productColumns.images) {
+    await queryInterface.addColumn("products", "images", {
+      type: DataTypes.JSONB,
+      allowNull: true,
+    });
+  }
+}
+
+export async function addProductSize(): Promise<void> {
+  const queryInterface = sequelize.getQueryInterface();
+  const productColumns = await queryInterface.describeTable("products");
+  if (!productColumns.size) {
+    await queryInterface.addColumn("products", "size", {
+      type: DataTypes.STRING(120),
+      allowNull: true,
+    });
+  }
+
+  const orderItemColumns = await queryInterface.describeTable("order_items");
+  if (!orderItemColumns.size) {
+    await queryInterface.addColumn("order_items", "size", {
+      type: DataTypes.STRING(120),
+      allowNull: true,
+    });
+  }
+}

@@ -5,7 +5,7 @@ import { EmailNotificationLog, NotificationRecipient } from "../models/index.js"
 
 interface OrderConfirmation {
   order: Order;
-  items: Pick<OrderItem, "title" | "artistName" | "quantity" | "unitPrice" | "imageUrl">[];
+  items: Pick<OrderItem, "title" | "size" | "artistName" | "quantity" | "unitPrice" | "imageUrl">[];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -186,6 +186,7 @@ function itemsTable(order: Order, items: OrderConfirmation["items"]): string {
         <td style="padding:14px 0;border-bottom:1px solid ${BRAND.line};vertical-align:top;font-family:${FONT}">
           <div style="font-size:15px;font-weight:600;color:${BRAND.ink}">${escapeHtml(item.title)}</div>
           <div style="font-size:13px;color:${BRAND.muted};margin-top:2px">by ${escapeHtml(item.artistName)}</div>
+          ${item.size ? `<div style="font-size:13px;color:${BRAND.muted};margin-top:2px">Size: ${escapeHtml(item.size)}</div>` : ""}
           <div style="font-size:13px;color:${BRAND.muted};margin-top:4px">Qty ${item.quantity} × ${escapeHtml(money(order.currency, item.unitPrice))}</div>
         </td>
         <td align="right" style="padding:14px 0 14px 12px;border-bottom:1px solid ${BRAND.line};vertical-align:top;font-family:${FONT};font-size:14px;font-weight:600;color:${BRAND.ink};white-space:nowrap">${escapeHtml(money(order.currency, lineTotal))}</td>
@@ -676,7 +677,7 @@ export async function sendOrderStatusNotification(
                 ["New status", badge(humanize(status), "neutral")],
               ]),
             )}
-            <div style="margin-top:24px">${button(trackUrl, "Track my order")}</div>
+            // <div style="margin-top:24px">${button(trackUrl, "Track my order")}</div>
             ${paragraph("Thank you for choosing Niyo Arts.")}
           `,
         }),

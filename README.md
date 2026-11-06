@@ -25,7 +25,15 @@ Express + TypeScript + PostgreSQL + Sequelize API for the Niyo Arts storefront.
    validates server certificates; use a trusted CA. If deployed behind a
    reverse proxy, set `TRUST_PROXY_HOPS` to the number of trusted proxy hops
    so client IPs and rate limits work as intended.
-8. Start the API (it creates missing tables and applies schema updates):
+8. If you need to recreate the database schema independently, run:
+
+   ```bash
+   npm run migrate
+   ```
+
+   This loads the registered Sequelize models, creates missing tables, and
+   applies pending project migrations. It does not restore deleted records.
+9. Start the API (it also ensures tables and schema updates are current):
 
    ```bash
    npm run dev
@@ -54,6 +62,7 @@ JSON. Send `Content-Type: application/json` with JSON request bodies.
 | POST | `/api/auth/forgot-password` | Email a password reset link | `200` |
 | POST | `/api/auth/reset-password` | Set a new password | `200` |
 | POST | `/api/admin/images` | Upload a catalog image to Cloudinary (admin only) | `201` |
+| POST | `/api/admin/products/images` | Upload front, right, and left artwork images to Cloudinary (admin only) | `201` |
 | POST | `/api/carts` | Create an account-owned or guest cart | `201` |
 | GET | `/api/carts/:cartId` | Get a cart | `200` |
 | POST | `/api/carts/:cartId/items` | Add artwork quantities to a cart | `200` |
@@ -70,6 +79,16 @@ JSON. Send `Content-Type: application/json` with JSON request bodies.
 | POST | `/api/payments/flutterwave/webhook` | Verify a Flutterwave payment webhook | `200` |
 | POST | `/api/contact` | Submit a contact message | `201` |
 | GET | `/api/admin/dashboard` | Dashboard order, payment, sales, catalog, customer, and contact summary (admin only) | `200` |
+| POST/PUT | `/api/admin/cafe/menu` | Upload the cafe menu PDF or replace the current one in Cloudinary (admin only) | `201`/`200` |
+| GET | `/api/cafe/menu` | Get the current cafe menu PDF URL | `200` |
+| GET | `/api/admin/cafe/gallery` | List cafe gallery images (admin only) | `200` |
+| POST | `/api/admin/cafe/gallery` | Upload a cafe gallery image to Cloudinary (admin only) | `201` |
+| DELETE | `/api/admin/cafe/gallery/:id` | Remove an image from the cafe gallery (admin only) | `204` |
+| GET | `/api/cafe/gallery` | List public cafe gallery images | `200` |
+| GET/POST | `/api/admin/events` | List or create Niyo events (admin only) | `200`/`201` |
+| PUT/DELETE | `/api/admin/events/:id` | Update or delete a Niyo event (admin only) | `200`/`204` |
+| GET | `/api/events` | List public Niyo events | `200` |
+| GET | `/api/events/:id` | Get a public Niyo event | `200` |
 | GET | `/api/admin/orders` | Search and filter orders (admin only) | `200` |
 | GET | `/api/admin/orders/:reference` | View order, history, notes, payments, and email attempts (admin only) | `200` |
 | PATCH | `/api/admin/orders/:reference` | Update order status (admin only) | `200` |
@@ -83,6 +102,51 @@ The admin dashboard accepts optional `from` and `to` query parameters in
 returns order and payment totals, sales grouped by currency and day, recent
 orders, and current catalog, customer, and new-contact counts. The requested
 date range can be up to 366 days.
+
+Upload the cafe menu as multipart form data with a PDF field named `menu` to
+`POST /api/admin/cafe/menu` to create the initial menu or `PUT
+/api/admin/cafe/menu` to replace it. A POST also replaces the menu if one
+already exists. The PDF limit is 20 MB. Upload cafe gallery images using
+multipart form data with an
+image field named `image` to `POST /api/admin/cafe/gallery`. Gallery images are
+limited to JPEG, PNG, WebP, or GIF files up to 10 MB.
+
+Create Niyo events with JSON containing `title`, `imageUrl`, and `description`.
+Upload the event image first through `POST /api/admin/images`, then use its
+Cloudinary `imageUrl` when creating or updating the event. Event images must
+use HTTPS.
+
+For artwork, send product details and three image files as multipart form data
+directly to `POST /api/admin/products`, using image field names `front`,
+`right`, and `left` (one image per field; each can be up to 10 MB). The API
+uploads these files to Cloudinary and stores all three URLs on the product.
+The `front` URL is used as the main image automatically; do not send an
+`imageUrl` field. To replace the views, send the same three files to
+`PUT /api/admin/products/:slug`. Clients that already have Cloudinary URLs may
+instead send an `images` object in a JSON request.
+
+```json
+{
+  "slug": "example-artwork",
+  "title": "Example Artwork",
+  "artistId": "00000000-0000-4000-8000-000000000000",
+  "type": "Painting",
+  "category": "Art",
+  "size": "30 x 40 cm",
+  "price": "120",
+  "currency": "USD",
+  "description": "Artwork description"
+}
+```
+
+For multipart requests, submit those values as text fields and attach one image
+file to each of `front`, `right`, and `left`. Do not send `imageUrl` or an
+`images` field when uploading the files directly.
+
+Product `size` is optional and accepts a text value up to 120 characters, such
+as `"30 x 40 cm"`. The public product API returns the size and the same
+`images` object. Existing products without a size or additional views continue
+to return `size: null` and `images: null`.
 
 For Flutterwave, configure `FLW_SECRET_KEY` and a random `FLW_SECRET_HASH` in
 the backend environment. Set `API_BASE_URL` to the public API origin that
@@ -147,6 +211,26 @@ collection:
   }
 }
 ```
+
+For artwork, upload three image files as multipart form data to
+`POST /api/admin/products/images`, using the field names `front`, `right`, and
+`left` (one image per field; each can be up to 10 MB). The response contains an
+`images` object with the Cloudinary URLs. Send that object as the product's
+`images` value when creating or updating the product. When creating a product
+with `images`, its front URL is automatically used as the main `imageUrl`:
+
+```json
+{
+  "images": {
+    "front": "https://res.cloudinary.com/example/image/upload/front.jpg",
+    "right": "https://res.cloudinary.com/example/image/upload/right.jpg",
+    "left": "https://res.cloudinary.com/example/image/upload/left.jpg"
+  }
+}
+```
+
+The public product API returns the same `images` object. Existing products
+without additional views continue to return `images: null`.
 
 `GET /api/health` returns `{ "status": "ok", "service": "niyo-arts-backend",
 "timestamp": "<ISO timestamp>" }`.

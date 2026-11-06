@@ -9,6 +9,12 @@ import {
 import { sequelize } from "../config/database.js";
 import type { Artist } from "./Artist.js";
 
+export interface ProductImages {
+  front: string;
+  right: string;
+  left: string;
+}
+
 export class Product extends Model<
   InferAttributes<Product>,
   InferCreationAttributes<Product>
@@ -20,9 +26,11 @@ export class Product extends Model<
   declare kind: CreationOptional<"physical" | "digital">;
   declare type: string;
   declare category: string;
+  declare size: CreationOptional<string | null>;
   declare price: string;
   declare currency: CreationOptional<string>;
   declare imageUrl: string;
+  declare images: CreationOptional<ProductImages | null>;
   declare description: string;
   declare isActive: CreationOptional<boolean>;
   declare artist?: NonAttribute<Artist>;
@@ -51,6 +59,7 @@ Product.init(
       defaultValue: "physical",
     },
     category: { type: DataTypes.STRING(80), allowNull: false },
+    size: { type: DataTypes.STRING(120), allowNull: true },
     price: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
     currency: {
       type: DataTypes.STRING(3),
@@ -58,6 +67,7 @@ Product.init(
       defaultValue: "USD",
     },
     imageUrl: { type: DataTypes.TEXT, allowNull: false },
+    images: { type: DataTypes.JSONB, allowNull: true },
     description: { type: DataTypes.TEXT, allowNull: false },
     isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     createdAt: DataTypes.DATE,

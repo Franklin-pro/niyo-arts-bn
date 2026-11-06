@@ -85,6 +85,65 @@ export async function uploadAdminImage(
   res.status(201).json({ data: await uploadImage(req.file) });
 }
 
+export async function uploadAdminProductImages(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const files = req.files;
+  if (!files || Array.isArray(files)) {
+    throw new HttpError(400, "Upload one image for each of the front, right, and left fields.");
+  }
+  const front = files.front?.[0];
+  const right = files.right?.[0];
+  const left = files.left?.[0];
+  if (!front || !right || !left) {
+    throw new HttpError(400, "Images for front, right, and left views are all required.");
+  }
+  const [frontImage, rightImage, leftImage] = await Promise.all([
+    uploadImage(front, "products"),
+    uploadImage(right, "products"),
+    uploadImage(left, "products"),
+  ]);
+  res.status(201).json({
+    data: {
+      images: {
+        front: frontImage.imageUrl,
+        right: rightImage.imageUrl,
+        left: leftImage.imageUrl,
+      },
+    },
+  });
+}
+
+async function uploadProductImageFiles(
+  req: Request,
+): Promise<{ front: string; right: string; left: string } | undefined> {
+  const files = req.files;
+  if (!files) return undefined;
+  if (Array.isArray(files)) {
+    throw new HttpError(400, "Upload image files in the front, right, and left fields.");
+  }
+
+  const front = files.front?.[0];
+  const right = files.right?.[0];
+  const left = files.left?.[0];
+  if (!front && !right && !left) return undefined;
+  if (!front || !right || !left) {
+    throw new HttpError(400, "Images for front, right, and left views are all required.");
+  }
+
+  const [frontImage, rightImage, leftImage] = await Promise.all([
+    uploadImage(front, "products"),
+    uploadImage(right, "products"),
+    uploadImage(left, "products"),
+  ]);
+  return {
+    front: frontImage.imageUrl,
+    right: rightImage.imageUrl,
+    left: leftImage.imageUrl,
+  };
+}
+
 export async function listAdminProducts(_req: Request, res: Response): Promise<void> {
   const products = await Product.findAll({
     include: [{ model: Artist, as: "artist", required: true }],
@@ -95,19 +154,29 @@ export async function listAdminProducts(_req: Request, res: Response): Promise<v
 
 export async function createAdminProduct(req: Request, res: Response): Promise<void> {
   const input = productAdminSchema.parse(req.body);
+  const images = await uploadProductImageFiles(req) ?? input.images;
+  if (!images) {
+    throw new HttpError(400, "Upload front, right, and left images with the product.");
+  }
   if (!(await Artist.findByPk(input.artistId))) {
     throw new HttpError(400, "The selected artist does not exist.");
   }
   if (input.currency === "RWF" && !Number.isInteger(input.price)) {
     throw new HttpError(400, "RWF product prices must be whole numbers.");
   }
-  const product = await Product.create({ ...input, price: input.price.toFixed(2) });
+  const product = await Product.create({
+    ...input,
+    images,
+    imageUrl: images.front,
+    price: input.price.toFixed(2),
+  });
   res.status(201).json({ data: product });
 }
 
 export async function updateAdminProduct(req: Request, res: Response): Promise<void> {
   const { slug } = slugParamSchema.parse(req.params);
   const input = productAdminSchema.partial().strict().parse(req.body);
+  const uploadedImages = await uploadProductImageFiles(req);
   const product = await Product.findOne({ where: { slug } });
   if (!product) throw new HttpError(404, "Artwork not found.");
   if (input.slug !== undefined && input.slug !== product.slug) {
@@ -130,6 +199,11 @@ export async function updateAdminProduct(req: Request, res: Response): Promise<v
         key === "price" && typeof value === "number" ? value.toFixed(2) : value,
       ]),
   );
+  const images = uploadedImages ?? input.images;
+  if (images) {
+    updates.images = images;
+    updates.imageUrl = images.front;
+  }
   await product.update(updates);
   res.status(200).json({ data: product });
 }
