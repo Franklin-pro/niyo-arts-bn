@@ -11,6 +11,7 @@ import {
   deleteAdminContact,
   deleteAdminProduct,
   deleteNotificationRecipient,
+  getAdminDashboard,
   listAdminArtists,
   listAdminCollections,
   listAdminContacts,
@@ -51,6 +52,7 @@ router.post("/collections", asyncHandler(createAdminCollection));
 router.put("/collections/:slug", asyncHandler(updateAdminCollection));
 router.delete("/collections/:slug", asyncHandler(deleteAdminCollection));
 
+router.get("/dashboard", asyncHandler(getAdminDashboard));
 router.get("/orders", asyncHandler(listAdminOrders));
 router.get("/orders/:reference", asyncHandler(getAdminOrder));
 router.patch("/orders/:reference", asyncHandler(updateAdminOrder));

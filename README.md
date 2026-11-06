@@ -69,6 +69,7 @@ JSON. Send `Content-Type: application/json` with JSON request bodies.
 | GET | `/api/payments/flutterwave/callback` | Verify checkout return and redirect | `303` |
 | POST | `/api/payments/flutterwave/webhook` | Verify a Flutterwave payment webhook | `200` |
 | POST | `/api/contact` | Submit a contact message | `201` |
+| GET | `/api/admin/dashboard` | Dashboard order, payment, sales, catalog, customer, and contact summary (admin only) | `200` |
 | GET | `/api/admin/orders` | Search and filter orders (admin only) | `200` |
 | GET | `/api/admin/orders/:reference` | View order, history, notes, payments, and email attempts (admin only) | `200` |
 | PATCH | `/api/admin/orders/:reference` | Update order status (admin only) | `200` |
@@ -76,6 +77,12 @@ JSON. Send `Content-Type: application/json` with JSON request bodies.
 | PATCH | `/api/admin/orders/:reference/shipping` | Save DHL tracking and shipping status (admin only) | `200` |
 | PATCH | `/api/admin/orders/:reference/digital-delivery` | Email a digital delivery link (admin only) | `200` |
 | GET/POST/DELETE | `/api/admin/notification-recipients` | Manage new-order email recipients (admin only) | `200`/`201`/`204` |
+
+The admin dashboard accepts optional `from` and `to` query parameters in
+`YYYY-MM-DD` format (inclusive UTC dates). It defaults to the last 30 days and
+returns order and payment totals, sales grouped by currency and day, recent
+orders, and current catalog, customer, and new-contact counts. The requested
+date range can be up to 366 days.
 
 For Flutterwave, configure `FLW_SECRET_KEY` and a random `FLW_SECRET_HASH` in
 the backend environment. Set `API_BASE_URL` to the public API origin that

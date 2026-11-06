@@ -86,6 +86,29 @@ export const adminOrderQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
 }).strict();
 
+export const adminDashboardQuerySchema = z.object({
+  from: z.string().date().optional(),
+  to: z.string().date().optional(),
+}).strict().superRefine((query, context) => {
+  if (query.from && query.to) {
+    const from = Date.parse(`${query.from}T00:00:00.000Z`);
+    const to = Date.parse(`${query.to}T00:00:00.000Z`);
+    if (from > to) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["to"],
+        message: "The end date must be on or after the start date.",
+      });
+    } else if (to - from > 365 * 86_400_000) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["to"],
+        message: "The selected date range cannot exceed 366 days.",
+      });
+    }
+  }
+});
+
 export const digitalDeliverySchema = z.object({
   itemId: z.string().uuid(),
   deliveryUrl: z.string().url().max(2048).refine(

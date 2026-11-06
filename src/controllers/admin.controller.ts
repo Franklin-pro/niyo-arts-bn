@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { Op } from "sequelize";
+import { Op, QueryTypes } from "sequelize";
 import { sequelize } from "../config/database.js";
 import {
   Artist,
@@ -13,6 +13,7 @@ import {
   OrderStatusHistory,
   PaymentAttempt,
   Product,
+  User,
 } from "../models/index.js";
 import { HttpError } from "../utils/http-error.js";
 import { AuthenticatedRequest } from "../middleware/auth.middleware.js";
@@ -23,6 +24,7 @@ import {
   sendTrackedNotification,
 } from "../services/email.service.js";
 import {
+  adminDashboardQuerySchema,
   artistAdminSchema,
   adminOrderQuerySchema,
   collectionAdminSchema,
@@ -37,6 +39,41 @@ import {
 } from "../validators/admin.validators.js";
 import { slugParamSchema } from "../validators/catalog.validators.js";
 import { uploadImage } from "../services/cloudinary.service.js";
+
+interface DashboardStatusRow {
+  status: string;
+  count: number;
+}
+
+interface DashboardPaymentRow {
+  status: string;
+  currency: string;
+  paymentMethod: string;
+  count: number;
+  amount: string;
+}
+
+interface DashboardPaymentAttemptRow {
+  status: string;
+  count: number;
+}
+
+interface DashboardCurrencyAmountRow {
+  currency: string;
+  amount: string;
+}
+
+interface DashboardSalesRow {
+  date: string;
+  currency: string;
+  orderCount: number;
+  paidOrders: number;
+  revenue: string;
+}
+
+function sumCounts(rows: Array<{ count: number }>): number {
+  return rows.reduce((total, row) => total + Number(row.count), 0);
+}
 
 export async function uploadAdminImage(
   req: Request,
@@ -187,6 +224,138 @@ export async function deleteAdminCollection(req: Request, res: Response): Promis
   if (!collection) throw new HttpError(404, "Collection not found.");
   await collection.update({ isActive: false });
   res.status(204).end();
+}
+
+export async function getAdminDashboard(req: Request, res: Response): Promise<void> {
+  const query = adminDashboardQuerySchema.parse(req.query);
+  const today = new Date().toISOString().slice(0, 10);
+  const defaultFrom = new Date(Date.now() - 29 * 86_400_000).toISOString().slice(0, 10);
+  const from = query.from || (query.to
+    ? new Date(Date.parse(`${query.to}T00:00:00.000Z`) - 29 * 86_400_000)
+        .toISOString()
+        .slice(0, 10)
+    : defaultFrom);
+  const to = query.to || today;
+  const start = new Date(`${from}T00:00:00.000Z`);
+  const end = new Date(new Date(`${to}T00:00:00.000Z`).getTime() + 86_400_000);
+  if (end.getTime() <= start.getTime()) {
+    throw new HttpError(400, "The end date must be on or after the start date.");
+  }
+  if (end.getTime() - start.getTime() > 366 * 86_400_000) {
+    throw new HttpError(400, "The selected date range cannot exceed 366 days.");
+  }
+  const replacements = { start: start.toISOString(), end: end.toISOString() };
+  const periodWhere = { createdAt: { [Op.gte]: start, [Op.lt]: end } };
+
+  const [
+    orderStatuses,
+    paymentBreakdown,
+    paymentAttempts,
+    salesByCurrency,
+    salesByDay,
+    activeProducts,
+    inactiveProducts,
+    artists,
+    customers,
+    newContacts,
+    recentOrders,
+  ] = await Promise.all([
+    sequelize.query<DashboardStatusRow>(
+      `SELECT status, COUNT(*)::int AS count
+       FROM orders
+       WHERE "createdAt" >= :start AND "createdAt" < :end
+       GROUP BY status
+       ORDER BY status`,
+      { replacements, type: QueryTypes.SELECT },
+    ),
+    sequelize.query<DashboardPaymentRow>(
+      `SELECT "paymentStatus" AS status, currency, "paymentMethod" AS "paymentMethod",
+              COUNT(*)::int AS count, COALESCE(SUM(total), 0)::text AS amount
+       FROM orders
+       WHERE "createdAt" >= :start AND "createdAt" < :end
+       GROUP BY "paymentStatus", currency, "paymentMethod"
+       ORDER BY "paymentStatus", currency, "paymentMethod"`,
+      { replacements, type: QueryTypes.SELECT },
+    ),
+    sequelize.query<DashboardPaymentAttemptRow>(
+      `SELECT status, COUNT(*)::int AS count
+       FROM payment_attempts
+       WHERE "createdAt" >= :start AND "createdAt" < :end
+       GROUP BY status
+       ORDER BY status`,
+      { replacements, type: QueryTypes.SELECT },
+    ),
+    sequelize.query<DashboardCurrencyAmountRow>(
+       `SELECT currency, COALESCE(SUM(total), 0)::text AS amount
+        FROM orders
+        WHERE "createdAt" >= :start AND "createdAt" < :end
+          AND "paymentStatus" = 'successful'
+        GROUP BY currency
+        ORDER BY currency`,
+       { replacements, type: QueryTypes.SELECT },
+    ),
+    sequelize.query<DashboardSalesRow>(
+      `SELECT TO_CHAR(DATE_TRUNC('day', "createdAt" AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS date,
+              currency, COUNT(*)::int AS "orderCount",
+              COUNT(*) FILTER (WHERE "paymentStatus" = 'successful')::int AS "paidOrders",
+              COALESCE(SUM(total) FILTER (WHERE "paymentStatus" = 'successful'), 0)::text AS revenue
+       FROM orders
+       WHERE "createdAt" >= :start AND "createdAt" < :end
+       GROUP BY 1, currency
+       ORDER BY 1, currency`,
+      { replacements, type: QueryTypes.SELECT },
+    ),
+    Product.count({ where: { isActive: true } }),
+    Product.count({ where: { isActive: false } }),
+    Artist.count(),
+    User.count({ where: { role: "user" } }),
+    ContactMessage.count({ where: { status: "new" } }),
+    Order.findAll({
+      where: periodWhere,
+      attributes: [
+        "reference",
+        "customerName",
+        "customerEmail",
+        "total",
+        "currency",
+        "status",
+        "paymentStatus",
+        "createdAt",
+      ],
+      include: [{
+        model: OrderItem,
+        as: "items",
+        attributes: ["title", "quantity", "unitPrice", "productKind"],
+      }],
+      order: [["createdAt", "DESC"]],
+      limit: 10,
+    }),
+  ]);
+
+  res.status(200).json({
+    data: {
+      period: { from, to },
+      summary: {
+        totalOrders: sumCounts(orderStatuses),
+        paidOrders: sumCounts(paymentBreakdown.filter((payment) => payment.status === "successful")),
+        pendingPayments: sumCounts(paymentBreakdown.filter((payment) => payment.status === "pending")),
+        failedPayments: sumCounts(paymentBreakdown.filter((payment) => payment.status === "failed")),
+        cancelledOrders: orderStatuses.find((order) => order.status === "cancelled")?.count ?? 0,
+        refundedOrders: orderStatuses.find((order) => order.status === "refunded")?.count ?? 0,
+        salesByCurrency,
+      },
+      ordersByStatus: orderStatuses,
+      payments: {
+        byStatus: paymentBreakdown,
+        attemptsByStatus: paymentAttempts,
+      },
+      salesByDay,
+      catalog: { activeProducts, inactiveProducts, artists },
+      customers: { total: customers },
+      contacts: { new: newContacts },
+      recentOrders,
+    },
+  });
 }
 
 export async function listAdminOrders(req: Request, res: Response): Promise<void> {
